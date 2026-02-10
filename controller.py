@@ -2,22 +2,31 @@ import base64
 import json
 from flask import Blueprint, request, Response
 from utils import decrypt_aes_key, decrypt_flow_payload, load_private_key
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.primitives import padding
-from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 chat_blueprint = Blueprint('chat', __name__)
 
 @chat_blueprint.route("/flow", methods=["POST"])
 def flow():
+    """
+    WhatsApp Flow endpoint using AES-GCM for response encryption.
+    - Decrypt incoming AES key
+    - Decrypt incoming payload
+    - Encrypt response payload using AES-GCM with bitwise-inverted IV
+    - Append auth tag to ciphertext
+    - Return Base64-encoded result
+    """
+
     private_key = load_private_key()
     body = request.get_json()
 
     if not body:
         return Response(status=400)
 
-    # Decrypt AES key from incoming request
+    # 1️⃣ Decrypt AES key from request
     aes_key = decrypt_aes_key(private_key, body["encrypted_aes_key"])
+
+    # 2️⃣ Decrypt the incoming flow payload
     decrypted_payload = decrypt_flow_payload(
         aes_key,
         body["encrypted_flow_data"],
@@ -25,26 +34,26 @@ def flow():
     )
     print("Decrypted Payload:", decrypted_payload)
 
-    # Prepare plaintext JSON response
+    # 3️⃣ Prepare response payload
     response_json = {"status": "ok"}
-    response_bytes = json.dumps(response_json).encode("utf-8")
+    response_bytes = json.dumps(response_json).encode("utf-8")  # UTF-8 bytes
 
-    # AES-CBC encryption with PKCS7 padding
-    iv = body.get("initial_vector")  # WhatsApp expects same IV sometimes
-    if iv:
-        iv = base64.b64decode(iv)
-    else:
-        from os import urandom
-        iv = urandom(16)
+    # 4️⃣ Prepare IV for response encryption by bitwise inverting the request IV
+    request_iv_bytes = base64.b64decode(body["initial_vector"])
+    response_iv_bytes = bytes(b ^ 0xFF for b in request_iv_bytes)  # invert all bits
 
-    padder = padding.PKCS7(128).padder()
-    padded = padder.update(response_bytes) + padder.finalize()
+    # 5️⃣ Encrypt using AES-GCM
+    aesgcm = AESGCM(aes_key)
+    # empty AAD, 16-byte auth tag is default
+    encrypted_bytes = aesgcm.encrypt(
+        nonce=response_iv_bytes,
+        data=response_bytes,
+        associated_data=None  # empty AAD
+    )
+    # Note: AESGCM.encrypt() returns ciphertext + auth tag automatically
 
-    cipher = Cipher(algorithms.AES(aes_key), modes.CBC(iv), backend=default_backend())
-    encryptor = cipher.encryptor()
-    encrypted = encryptor.update(padded) + encryptor.finalize()
+    # 6️⃣ Base64 encode the result
+    response_base64 = base64.b64encode(encrypted_bytes).decode("utf-8")
 
-    # Prepend IV (if needed) and Base64 encode
-    response_base64 = base64.b64encode(iv + encrypted).decode("utf-8")
-
+    # 7️⃣ Return Base64-encoded response as plain text
     return Response(response=response_base64, status=200, mimetype="text/plain")
