@@ -35,7 +35,7 @@ def flow():
     print("Decrypted Payload:", decrypted_payload)
 
     # 3️⃣ Prepare response payload
-    response_json = {"status": "ok"}
+    response_json = {"data": {"status": "active"}}
     response_bytes = json.dumps(response_json).encode("utf-8")  # UTF-8 bytes
 
     # 4️⃣ Prepare IV for response encryption by bitwise inverting the request IV
