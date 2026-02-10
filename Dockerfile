@@ -16,10 +16,11 @@ COPY requirements.txt requirements.txt
 
 COPY app.py app.py
 
-
 COPY private_key.pem private_key.pem
 
 COPY controller.py controller.py
+
+COPY utils.py utils.py
 
 # COPY . .
 
@@ -40,7 +41,7 @@ USER appuser
 # Exposer le port pour Flask
 
 # EXPOSE 443
-EXPOSE 5000
+# EXPOSE $PORT
 
 # Set environment variable for Flask to run in production mode
 
@@ -50,4 +51,4 @@ ENV PYTHONUNBUFFERED=1
 
 # Démarrer l'application avec Gunicorn
 
-CMD ["gunicorn", "-w", "2", "-b", "0.0.0.0:443", "app:app", "--log-level", "debug"]
+CMD ["sh", "-c", "gunicorn app:app -b 0.0.0.0:${PORT} --log-level debug"]

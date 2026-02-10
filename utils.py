@@ -289,7 +289,7 @@ def load_private_key(path="private_key.pem"):
     with open(path, "rb") as f:
         return serialization.load_pem_private_key(
             f.read(),
-            password=None,   # b"password" si la clé est protégée
+            password=b"token",
             backend=default_backend()
         )
 
